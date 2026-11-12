@@ -86,6 +86,8 @@ export interface Combat {
   attackerIds: string[];
   target: AttackTarget;
   redirected: boolean;
+  /** かばうを使えるかばう生物（防御側が使うか選ぶ）。使わなければnull。 */
+  guardOffer: string | null;
 }
 
 export interface PendingSearch {
@@ -129,6 +131,7 @@ export type Action =
   | { type: 'attack'; attackerIds: string[]; target: AttackTarget }
   | { type: 'counter'; instanceId: string; targetId?: string }
   | { type: 'pass_counter' }
+  | { type: 'use_guard' }
   | { type: 'cleaning'; instanceId: string }
   | { type: 'brood'; instanceId: string; resourceId: string; targetId: string }
   | { type: 'choose'; instanceId: string }

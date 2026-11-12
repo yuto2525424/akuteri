@@ -580,10 +580,10 @@ function declareAttack(state: GameState, pid: PlayerId, attackerIds: string[], t
   const tName = target.kind === 'habitat' ? `${HABITATS[d.faction].name}（生息地）` : meta(findField(d, target.id)!.cardId).name;
   log(state, `${p.name}の${names}が${tName}を攻撃`);
 
-  const combat = { attacker: pid, attackerIds, target, redirected: false };
+  const combat: NonNullable<GameState['combat']> = { attacker: pid, attackerIds, target, redirected: false, guardOffer: null };
   state.combat = combat;
 
-  // かばう（猛追を持つ攻撃は変更されない）
+  // かばう（猛追を持つ攻撃は変更されない）。使うかどうかは防御側が選ぶ。
   const dorado = attackers.some((a) => a.cardId === 'RIVER-001');
   if (!dorado) {
     const guard = d.field.find(
@@ -594,16 +594,14 @@ function declareAttack(state: GameState, pid: PlayerId, attackerIds: string[], t
         !(target.kind === 'creature' && target.id === g.id),
     );
     if (guard) {
-      guard.ready = false;
-      combat.target = { kind: 'creature', id: guard.id };
-      combat.redirected = true;
-      log(state, `${meta(guard.cardId).name}が【かばう】で攻撃対象になりました`);
+      combat.guardOffer = guard.id;
+      log(state, `${d.name}は${meta(guard.cardId).name}の【かばう】を使えます`);
     }
   }
 
-  // 迎撃カードが使えるか確認。使えないなら自動で戦闘へ。
+  // 迎撃カードかかばうが使えるか確認。どちらも使えないなら自動で戦闘へ。
   const playable = d.hand.filter((h) => meta(h.cardId).type === 'counter' && canUseCounter(state, h.cardId));
-  if (playable.length === 0) {
+  if (playable.length === 0 && !combat.guardOffer) {
     resolveCombat(state);
   } else {
     state.phase = 'counter';
@@ -691,6 +689,25 @@ function useCounter(state: GameState, pid: PlayerId, instanceId: string, targetI
   } else {
     resolveCombat(state);
   }
+}
+
+/** かばう：防御側が選んだときだけ、かばう生物を攻撃対象に変える */
+function useGuard(state: GameState, pid: PlayerId) {
+  const c = state.combat;
+  if (state.phase !== 'counter' || !c) fail('今はかばえません');
+  if (OTHER[c.attacker] !== pid) fail('かばうのは防御側のみです');
+  if (!c.guardOffer) fail('かばえる生物がいません');
+  const d = state.players[pid];
+  const guard = findField(d, c.guardOffer);
+  if (!guard || !guard.ready || guard.attachedTo !== null) fail('かばう生物が使えません');
+  guard.ready = false;
+  c.target = { kind: 'creature', id: guard.id };
+  c.redirected = true;
+  c.guardOffer = null;
+  log(state, `${meta(guard.cardId).name}が【かばう】で攻撃対象になりました`);
+  // 迎撃できるカードが残っていなければ、そのまま戦闘へ
+  const playable = d.hand.some((h) => meta(h.cardId).type === 'counter' && canUseCounter(state, h.cardId));
+  if (!playable) resolveCombat(state);
 }
 
 function resolveCombat(state: GameState) {
@@ -828,6 +845,7 @@ function dispatch(state: GameState, actor: PlayerId, action: Action) {
 
   if (state.phase === 'counter') {
     if (action.type === 'counter') return useCounter(state, actor, action.instanceId, action.targetId);
+    if (action.type === 'use_guard') return useGuard(state, actor);
     if (action.type === 'pass_counter') {
       if (!state.combat || OTHER[state.combat.attacker] !== actor) fail('迎撃できるのは防御側のみです');
       return resolveCombat(state);
@@ -859,6 +877,7 @@ function dispatch(state: GameState, actor: PlayerId, action: Action) {
       return endTurn(state);
     case 'counter':
     case 'pass_counter':
+    case 'use_guard':
     case 'choose':
       fail('今は使えません');
   }

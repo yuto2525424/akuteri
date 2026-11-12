@@ -12,8 +12,22 @@
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <title>AQUA TERRITORY</title>
+    <style>
+      #rotate-hint { display: none; }
+      @media (orientation: portrait) and (max-width: 900px) {
+        #rotate-hint {
+          display: flex; position: fixed; inset: 0; z-index: 99999;
+          flex-direction: column; align-items: center; justify-content: center;
+          background: #0b2a4a; color: #fff; text-align: center; padding: 24px;
+          font: 700 22px/1.6 system-ui, sans-serif;
+        }
+        #rotate-hint .icon { font-size: 64px; transform: rotate(-90deg); margin-bottom: 16px; }
+        #root { visibility: hidden; }
+      }
+    </style>
   </head>
   <body>
+    <div id="rotate-hint"><div class="icon">📱</div><div>スマホを横向きにしてください</div><div style="font-size:15px;opacity:.8;margin-top:8px">横にすると、ゲーム画面が表示されます</div></div>
     <div id="root"></div>
     <script type="module" src="/src/client/main.tsx"></script>
   </body>

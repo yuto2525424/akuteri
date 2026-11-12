@@ -70,7 +70,11 @@ function counterAction(s: GameState, cpu: PlayerId): Action {
   for (const c of p.hand) {
     if (CARDS[c.cardId].type !== 'counter') continue;
     if (c.cardId === 'SEA-C01') {
-      if (own.length >= 2) return { type: 'counter', instanceId: c.id, targetId: own[0].id };
+      // 混乱効果：攻撃対象を、一番ATKの高い自分の生物に変える（攻撃に負けにくい生物を受けさせる）
+      if (own.length >= 2) {
+        const best = [...own].sort((a, b) => currentAtk(s, b) - currentAtk(s, a))[0];
+        return { type: 'counter', instanceId: c.id, targetId: best.id };
+      }
       continue;
     }
     return { type: 'counter', instanceId: c.id };
@@ -117,13 +121,20 @@ export function cpuStep(
   };
 
   if (state.pending && state.pending.player === cpu) {
-    const pick = state.pending.cards.find((c) => CARDS[c.cardId].type === 'creature');
+    // 山札の上から見た生物のうち、一番ATKの高いものを手札に加える（カード文の「生物を1枚選ぶ」）
+    const pick = state.pending.cards
+      .filter((c) => CARDS[c.cardId].type === 'creature')
+      .sort((a, b) => (CARDS[b.cardId].baseAtk ?? 0) - (CARDS[a.cardId].baseAtk ?? 0))[0];
     return tryAll(pick ? [{ type: 'choose', instanceId: pick.id }] : []);
   }
   if (state.phase === 'counter') {
     // 初級は迎撃をうっかり見送ることがある
     if (level === 'beginner' && Math.random() < 0.4) return tryAll([{ type: 'pass_counter' }]);
-    return tryAll([counterAction(state, cpu), { type: 'pass_counter' }]);
+    // かばえるなら、かばう（上級・中級は必ず、初級は時々）
+    const canGuard = !!state.combat?.guardOffer;
+    const useGuardNow = canGuard && (level !== 'beginner' || Math.random() < 0.5);
+    const guardFirst: Action[] = useGuardNow ? [{ type: 'use_guard' }] : [];
+    return tryAll([...guardFirst, counterAction(state, cpu), { type: 'pass_counter' }]);
   }
   if (state.step === 'draw') {
     return tryAll([{ type: 'draw' }]);

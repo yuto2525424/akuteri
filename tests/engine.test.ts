@@ -267,7 +267,11 @@ describe('戦闘', () => {
     s = putField(s, atk, 'SEA-001', true, 'big');
     s = putField(s, def, 'SEA-005', true, 'guard'); // 威嚇（かばう）
     s = putField(s, def, 'SEA-009', false, 'fish');
-    const r = applyAction(s, atk, { type: 'attack', attackerIds: ['big'], target: { kind: 'habitat' } });
+    const r0 = applyAction(s, atk, { type: 'attack', attackerIds: ['big'], target: { kind: 'habitat' } });
+    expect(r0.ok).toBe(true);
+    if (!r0.ok) return;
+    // かばうは防御側が選ぶ：使うと決めてから戦闘へ
+    const r = applyAction(r0.state, def, { type: 'use_guard' });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     // かばう（ハリセンボン 3000+2000=5000）に対して8000で勝利し撃破

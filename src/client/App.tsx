@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { clearOrigin, flyIn, rememberOrigin } from './fly';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { CARDS, HIDDEN_CARD_ID } from '../shared/cards';
@@ -24,7 +25,6 @@ const SESSION_KEY = 'aqua-territory-session';
 /** 攻撃・撃破・テリトリー破壊の告知（ゲームの記録から見つける） */
 const CALLOUTS: { re: RegExp; title: string; tone: 'attack' | 'hit' | 'territory' | 'guard' }[] = [
   { re: /が【かばう】で攻撃対象になりました/, title: 'かばう！', tone: 'guard' },
-  { re: /を攻撃$/, title: '攻撃！', tone: 'attack' },
   { re: /テリトリーを1枚破壊/, title: 'テリトリー破壊！', tone: 'territory' },
   { re: /が撃破されました$/, title: '撃破！', tone: 'hit' },
 ];
@@ -369,6 +369,32 @@ function Game(props: {
   const fieldFresh = new Set(
     prevFieldIds.current ? allField.map((f) => f.id).filter((id) => !prevFieldIds.current!.has(id)) : [],
   );
+  // 出発点（山札・手札）から、新しく出たカードを飛ばす演出
+  const handFreshKey = [...handFresh].join(',');
+  const fieldFreshKey = [...fieldFresh].join(',');
+  useLayoutEffect(() => {
+    const ids = handFreshKey.split(',').filter(Boolean);
+    if (ids.length === 0) return;
+    // 割れた直後にテリトリーから手札へ：割れた場所から、割れる演出の後に飛ばす
+    const t = setTimeout(() => {
+      const shard = document.querySelector<HTMLElement>('.fside.mine .terr-card.shatter');
+      if (shard) rememberOrigin(shard, 900);
+      ids.forEach((id) => flyIn(document.querySelector<HTMLElement>(`[data-hid="${id}"]`)));
+    }, 60);
+    return () => clearTimeout(t);
+  }, [handFreshKey]);
+  useLayoutEffect(() => {
+    fieldFreshKey.split(',').filter(Boolean).forEach((id) => flyIn(document.querySelector<HTMLElement>(`[data-fid="${id}"]`)));
+  }, [fieldFreshKey]);
+
+  // 手札から資源に置いたとき：手札のカードから、増えた資源の位置へ飛ばす
+  const resFlyPending = useRef(false);
+  useLayoutEffect(() => {
+    if (!resFlyPending.current) return;
+    resFlyPending.current = false;
+    const coins = document.querySelectorAll<HTMLElement>('.fside.mine .res-coins .coin');
+    flyIn(coins[coins.length - 1] ?? null);
+  }, [myP.resources.length]);
   const attackIds = new Set(state.combat ? state.combat.attackerIds : []);
   const hitId = state.combat && state.combat.target.kind === 'creature' ? state.combat.target.id : null;
   const fxOf = (id: string): TileFx => ({
@@ -380,17 +406,8 @@ function Game(props: {
     const oldField = prevFieldIds.current;
     prevHandIds.current = new Set(myP.hand.map((c) => c.id));
     prevFieldIds.current = new Set(allField.map((f) => f.id));
-    if (oldField) {
-      // 新しく場に出た生物は、カードを大きく見せる（出した動き）
-      const played = allField.filter((f) => !oldField.has(f.id) && f.attachedTo === null && CARDS[f.cardId].type === 'creature');
-      if (played.length > 0) setZoom({ cardId: played[played.length - 1].cardId, key: Date.now() });
-    }
+    // 出した・使ったカードを中央に大きく出す演出は、プレイの邪魔になるので出さない（出た位置から飛ぶ演出で示す）
     const driftNow = [...myP.drift, ...foeP.drift];
-    if (prevDriftIds.current) {
-      // 新しく漂流域に入った「環境・迎撃」は、大きく見せる
-      const used = driftNow.filter((d) => !prevDriftIds.current!.has(d.id) && CARDS[d.cardId].type !== 'creature');
-      if (used.length > 0) setZoom({ cardId: used[used.length - 1].cardId, key: Date.now() });
-    }
     prevDriftIds.current = new Set(driftNow.map((d) => d.id));
   });
   useEffect(() => {
@@ -402,7 +419,48 @@ function Game(props: {
   // ---- 手応え：操作の結果に合わせて音・振動・画面の揺れ ----
   const prevState = useRef<GameState | null>(null);
   const [shaking, setShaking] = useState(false);
-  const [abilityBanner, setAbilityBanner] = useState<{ label: string; sub: string; key: number } | null>(null);
+  const [abilityBanner, setAbilityBanner] = useState<{ title?: string; label: string; sub: string; cardId?: string; key: number } | null>(null);
+  const [arrow, setArrow] = useState<{
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    w: number;
+    h: number;
+    key: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!arrow) return;
+    const t = setTimeout(() => setArrow(null), 1300);
+    return () => clearTimeout(t);
+  }, [arrow]);
+  // 迎撃の選択を一時的に隠して、盤面だけを見る（操作はできない）
+  const [counterPeek, setCounterPeek] = useState(false);
+  useEffect(() => {
+    if (state.phase !== 'counter') setCounterPeek(false);
+  }, [state.phase]);
+  // 対戦の始まり：コイントスで先攻・後攻を決めたことを見せてから、ゲームを始める
+  const [toss, setToss] = useState<'spin' | 'result' | null>(() => (state.turn === 1 ? 'spin' : null));
+  useEffect(() => {
+    if (toss !== 'spin') return;
+    const t1 = setTimeout(() => setToss('result'), 1900);
+    const t2 = setTimeout(() => setToss(null), 4600);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [toss]);
+  // 攻撃の対決：攻撃する生物のカードと、攻撃先のカード（生息地は名前）を並べて見せる
+  const [duel, setDuel] = useState<{
+    fromId: string;
+    toId?: string;
+    toName: string;
+    more: number;
+    key: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!duel) return;
+    const t = setTimeout(() => setDuel(null), 1700);
+    return () => clearTimeout(t);
+  }, [duel]);
   const [callout, setCallout] = useState<{ title: string; sub: string; tone: 'attack' | 'hit' | 'territory' | 'guard'; key: number } | null>(null);
   // テリトリーが割れた場所（割れた側・枠の番号）
   const [shatter, setShatter] = useState<{ side: PlayerId; idx: number; key: number } | null>(null);
@@ -432,11 +490,35 @@ function Game(props: {
       if (co?.c) {
         setCallout({ title: co.c.title, sub: co.e.text.slice(0, 60), tone: co.c.tone, key: Date.now() });
       }
+      // 迎撃カードを使った：どのカードが何の効果を発動したかを、カード画像で見せる
+      let counterShown = false;
       for (const entry of fresh) {
+        const used = entry.text.match(/^.+は(.+)を使用$/);
+        const card = used ? Object.values(CARDS).find((c) => c.type === 'counter' && c.name === used[1]) : undefined;
+        if (card) {
+          setAbilityBanner({
+            title: '迎撃発動！',
+            label: card.name,
+            sub: card.abilities.map((a) => `《${a.name}》${a.text}`).join(' ').slice(0, 60),
+            cardId: card.id,
+            key: Date.now(),
+          });
+          counterShown = true;
+          break;
+        }
+      }
+      for (const entry of counterShown ? [] : fresh) {
         const hit = ABILITY_LOG.find((a) => a.re.test(entry.text));
         if (hit) {
           feel('ability');
-          setAbilityBanner({ label: hit.label, sub: entry.text.slice(0, 48), key: Date.now() });
+          // どのカードの能力か：その能力名を持つカードを探す（完成カード画像で見せる）
+          const owner = Object.values(CARDS).find((c) => c.abilities.some((a) => a.name === hit.label));
+          setAbilityBanner({
+            label: owner ? `${owner.name}　《${hit.label}》` : `《${hit.label}》`,
+            sub: entry.text.slice(0, 48),
+            cardId: owner?.id,
+            key: Date.now(),
+          });
           break;
         }
       }
@@ -466,6 +548,38 @@ function Game(props: {
     } else if (!p.combat && state.combat) {
       feel('attack');
       shake();
+      // どの生物がどこを攻撃したか：山なりの矢印で示す
+      const c = state.combat;
+      // 攻撃の対決（カード同士）を出す
+      const atkP = state.players[c.attacker];
+      const defP = state.players[OTHER[c.attacker]];
+      const fromCard = atkP.field.find((f) => f.id === c.attackerIds[0]);
+      const targetId = c.target.kind === 'creature' ? c.target.id : null;
+      const toCard = targetId ? defP.field.find((f) => f.id === targetId) : undefined;
+      if (fromCard) {
+        setDuel({
+          fromId: fromCard.cardId,
+          toId: toCard?.cardId,
+          toName: c.target.kind === 'habitat' ? HABITAT_NAME(defP) : '',
+          more: c.attackerIds.length - 1,
+          key: Date.now(),
+        });
+      }
+      const gameEl = document.querySelector<HTMLElement>('.game');
+      const fromEl = document.querySelector<HTMLElement>(`[data-fid="${c.attackerIds[0]}"]`);
+      const toEl =
+        c.target.kind === 'creature'
+          ? document.querySelector<HTMLElement>(`[data-fid="${c.target.id}"]`)
+          : document.querySelector<HTMLElement>(`.fside.${c.attacker === me ? 'foe' : 'mine'} .fz-hab`);
+      if (gameEl && fromEl && toEl) {
+        const z = parseFloat(gameEl.style.zoom) || 1;
+        const g = gameEl.getBoundingClientRect();
+        const at = (el: HTMLElement) => {
+          const r = el.getBoundingClientRect();
+          return { x: (r.left + r.width / 2 - g.left) / z, y: (r.top + r.height / 2 - g.top) / z };
+        };
+        setArrow({ from: at(fromEl), to: at(toEl), w: g.width / z, h: g.height / z, key: Date.now() });
+      }
     } else if (p.combat && !state.combat && count(state) < count(p)) {
       feel('hit');
       shake();
@@ -530,9 +644,18 @@ function Game(props: {
     (action: Action, after?: () => void) => {
       // どの操作にも音を付ける（決定の音）
       playSfx('confirm');
+      // 山札から引く、手札から出す操作は、出発点を覚えてから送る（結果のカードを飛ばすため）
+      if (action.type === 'draw') rememberOrigin(document.querySelector('.fside.mine .deck-pile'));
+      if (action.type === 'play_creature' || action.type === 'play_environment' || action.type === 'place_resource') {
+        rememberOrigin(document.querySelector(`.hand-card[data-hid="${action.instanceId}"]`));
+      }
+      if (action.type === 'place_resource') resFlyPending.current = true;
       socket.emit('action', action, (r: { ok: boolean; error?: string }) => {
-        if (!r.ok) onError(r.error ?? '操作できません');
-        else after?.();
+        if (!r.ok) {
+          clearOrigin();
+          resFlyPending.current = false;
+          onError(r.error ?? '操作できません');
+        } else after?.();
       });
     },
     [socket, onError],
@@ -649,6 +772,42 @@ function Game(props: {
   };
 
   // ---- ボタン操作 ----
+  // 手札を上にスワイプすると、そのカードを出す（ボタンを押さなくてよい）
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  const swipeSkip = useRef(false);
+  const playCard = (card: CardInstance) => {
+    const m = CARDS[card.cardId];
+    if (m.type === 'creature') {
+      if (card.cardId === 'SEA-007') return setMode({ kind: 'pick_host', instanceId: card.id });
+      return send({ type: 'play_creature', instanceId: card.id }, () => setSel(null));
+    }
+    if (m.type === 'environment') {
+      if (card.cardId === 'SEA-E03') return setMode({ kind: 'pick_enemy', instanceId: card.id });
+      if (card.cardId === 'SEA-E02' || card.cardId === 'RIVER-E03') {
+        return setMode({ kind: 'pick_drift', instanceId: card.id, extra: false });
+      }
+      return send({ type: 'play_environment', instanceId: card.id }, () => setSel(null));
+    }
+  };
+
+  // 画面の大きさに合わせて、ゲーム全体が収まるように縮小する（スライドしなくても全部見える）
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = document.querySelector<HTMLElement>('.game');
+      if (!el) return;
+      el.style.zoom = '1';
+      // パソコンの画面（マウス操作）では縮めず、見やすい大きさのまま出す
+      const touch = window.matchMedia('(pointer: coarse)').matches;
+      if (!touch) return;
+      const s = Math.min(1, window.innerHeight / el.scrollHeight, window.innerWidth / el.scrollWidth);
+      el.style.zoom = String(Math.max(0.45, s));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  });
+
+
   const handAction = (kind: 'resource' | 'play' | 'extra') => {
     if (!selectedCard) return;
     const { card } = selectedCard;
@@ -773,6 +932,8 @@ function Game(props: {
   const counterCards = isCounterPhase
     ? myP.hand.filter((h) => CARDS[h.cardId].type === 'counter' && usableCounter(h.cardId))
     : [];
+  const guardCard =
+    isCounterPhase && state.combat?.guardOffer ? myP.field.find((f) => f.id === state.combat!.guardOffer) ?? null : null;
   const attackerNames = incoming.map((a) => CARDS[a.cardId].name).join('＋');
   const targetName =
     incomingTarget?.kind === 'habitat' ? `${myP.name}の生息地` : targetFoeCard ? CARDS[targetFoeCard.cardId].name : '生物';
@@ -787,7 +948,7 @@ function Game(props: {
   const stepIndex = state.step === 'draw' ? 1 : state.step === 'resource' ? 2 : 3;
 
   return (
-    <div className={`game ${shaking ? 'shake' : ''}`}>
+    <div className={`game ${shaking ? 'shake' : ''} ${counterPeek ? 'peek' : ''}`}>
       {banner && (
         <div className="turn-banner" key={`${state.turn}-${banner}`}>
           <span>{banner}</span>
@@ -845,7 +1006,14 @@ function Game(props: {
           state={state}
           side="foe"
           slotTargetable={(f) => (mode.kind === 'attack' && canHitFoe(f)) || mode.kind === 'pick_enemy'}
-          onSlot={(f) => (mode.kind === 'none' ? setSel({ zone: 'field', id: f.id }) : clickFoeField(f))}
+          onSlot={(f) => {
+            if (mode.kind !== 'none') return clickFoeField(f);
+            // 相手の生物をタップすると、その生物の詳細を出す
+            playSfx('tap');
+            setSel(null);
+            setMenu(null);
+            setInspectCardId(f.cardId);
+          }}
           habTarget={mode.kind === 'attack'}
           onHab={clickFoeHabitat}
           fx={fxOf}
@@ -897,8 +1065,28 @@ function Game(props: {
             {myP.hand.map((c) => (
               <div
                 key={c.id}
+                data-hid={c.id}
                 className={`hand-card ${sel?.id === c.id ? 'selected' : ''} ${handFresh.has(c.id) ? 'draw-in' : ''} ${isCounterPhase && counterCards.some((x) => x.id === c.id) ? 'counter-ready' : ''}`}
+                onPointerDown={(e) => {
+                  swipeStart.current = { x: e.clientX, y: e.clientY };
+                }}
+                onPointerUp={(e) => {
+                  const s = swipeStart.current;
+                  swipeStart.current = null;
+                  if (!s) return;
+                  const dy = e.clientY - s.y;
+                  const dx = e.clientX - s.x;
+                  // 上へスワイプ：自分の行動ステップでカードを出す
+                  if (dy < -60 && Math.abs(dx) < 80 && isActionStep && mode.kind === 'none' && CARDS[c.cardId].type !== 'counter') {
+                    swipeSkip.current = true;
+                    playCard(c);
+                  }
+                }}
                 onClick={(e) => {
+                  if (swipeSkip.current) {
+                    swipeSkip.current = false;
+                    return;
+                  }
                   // 攻撃を受けているときは、迎撃カードをタップすると使える
                   if (isCounterPhase && CARDS[c.cardId].type === 'counter') {
                     if (c.cardId === 'SEA-C01') {
@@ -986,6 +1174,81 @@ function Game(props: {
       )}
 
       {/* 能力発動の演出：「能力発動！」と能力名を大きく出す */}
+      {/* コイントス：先攻・後攻を決める */}
+      {toss && (
+        <div className="overlay toss-overlay">
+          <div className="toss-box">
+            {toss === 'spin' ? (
+              <>
+                <div className="coin spinning">
+                  <span>先攻</span>
+                </div>
+                <p className="toss-msg">コイントス！</p>
+              </>
+            ) : (
+              <>
+                <div className="coin landed">
+                  <span>{state.firstPlayer === me ? '自分' : '相手'}</span>
+                </div>
+                <p className="toss-msg">
+                  先攻：<b>{state.players[state.firstPlayer].name}</b>（{state.players[state.firstPlayer].faction === 'sea' ? '海' : '川'}）
+                </p>
+                <p className="toss-sub">
+                  後攻：{state.players[OTHER[state.firstPlayer]].name}（{state.players[OTHER[state.firstPlayer]].faction === 'sea' ? '海' : '川'}）
+                </p>
+                <button className="primary big" onClick={() => setToss(null)}>はじめる</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 攻撃の対決：攻撃する生物のカードと、攻撃先のカードを並べて見せる */}
+      {duel && (
+        <div className="duel" key={duel.key}>
+          <div className="duel-side atk">
+            <img src={`/cards-full/${duel.fromId}.jpg`} alt="" draggable={false} />
+            {duel.more > 0 && <span className="duel-more">＋{duel.more}体</span>}
+          </div>
+          <div className="duel-mid">
+            <span className="duel-label">攻撃！</span>
+            <span className="duel-arrow">▶</span>
+          </div>
+          <div className="duel-side def">
+            {duel.toId ? (
+              <img src={`/cards-full/${duel.toId}.jpg`} alt="" draggable={false} />
+            ) : (
+              <div className="duel-habitat">
+                <b>{duel.toName}</b>
+                <small>生息地</small>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 攻撃の矢印：攻撃する生物から、攻撃先（生物・生息地）へ山なりに伸びる */}
+      {arrow && (
+        <svg
+          className="atk-arrow"
+          key={arrow.key}
+          viewBox={`0 0 ${arrow.w} ${arrow.h}`}
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <defs>
+            <marker id="atk-head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto-start-reverse">
+              <path d="M0,0 L8,4 L0,8 z" fill="#ffd166" />
+            </marker>
+          </defs>
+          <path
+            d={`M ${arrow.from.x} ${arrow.from.y} Q ${(arrow.from.x + arrow.to.x) / 2} ${Math.min(arrow.from.y, arrow.to.y) - 140} ${arrow.to.x} ${arrow.to.y}`}
+            pathLength={1}
+            markerEnd="url(#atk-head)"
+          />
+        </svg>
+      )}
+
       {abilityBanner && (
         <div className="ability-banner" key={abilityBanner.key}>
           <div className="ab-flash" aria-hidden="true" />
@@ -997,7 +1260,10 @@ function Game(props: {
               style={{ '--a': `${(i * 360) / 16}deg`, animationDelay: `${(i % 4) * 0.03}s` } as CSSProperties}
             />
           ))}
-          <div className="ab-main">能力発動！</div>
+          <div className="ab-main">{abilityBanner.title ?? '能力発動！'}</div>
+          {abilityBanner.cardId && (
+            <img className="ab-card" src={`/cards-full/${abilityBanner.cardId}.jpg`} alt="" draggable={false} />
+          )}
           <div className="ab-name">{abilityBanner.label}</div>
           <div className="ab-sub">{abilityBanner.sub}</div>
         </div>
@@ -1014,18 +1280,40 @@ function Game(props: {
 
 
       {/* 迎撃の選択：使うか、このまま受けるかをプレイヤーが決める */}
-      {isCounterPhase && state.combat && (
-        <div className={`overlay counter-overlay ${mode.kind === 'pick_own' && mode.purpose === 'counter' ? 'picking' : ''}`}>
+      {/* 攻撃対象の変更先を選ぶ間は、場が見えるよう小さなバーだけ出す */}
+      {isCounterPhase && state.combat && mode.kind === 'pick_own' && mode.purpose === 'counter' && (
+        <div className="pick-bar">
+          <span>攻撃対象を変更する、自分の生物をタップしてください</span>
+          <button onClick={() => setMode({ kind: 'none' })}>やめる</button>
+        </div>
+      )}
+
+      {/* 迎撃・かばうの選択：使うか、このまま受けるかをプレイヤーが決める */}
+      {isCounterPhase && state.combat && counterPeek && (
+        <div className="pick-bar">
+          <span>盤面を見ています（操作はできません）</span>
+          <button className="primary" onClick={() => setCounterPeek(false)}>迎撃の選択に戻る</button>
+        </div>
+      )}
+
+      {isCounterPhase && state.combat && !counterPeek && !(mode.kind === 'pick_own' && mode.purpose === 'counter') && (
+        <div className="overlay counter-overlay">
           <div className="dialog counter-dialog">
             <h2>攻撃を受けています！</h2>
             <p>
               <b>{attackerNames}</b> が <b>{targetName}</b> を攻撃
             </p>
-            {mode.kind === 'pick_own' && mode.purpose === 'counter' ? (
-              <p className="pick-hint">攻撃対象を変更する、自分の生物をタップしてください</p>
-            ) : (
-              <p>迎撃カードを使うか、このまま受けるか選んでください（1回の攻撃に1枚まで）</p>
+            {guardCard && (
+              <div className="guard-offer">
+                <p>
+                  <b>{CARDS[guardCard.cardId].name}</b>の【かばう】で、この攻撃を受け持てます
+                </p>
+                <button className="primary big" onClick={() => send({ type: 'use_guard' })}>
+                  かばう（{CARDS[guardCard.cardId].name}が受ける）
+                </button>
+              </div>
             )}
+            <p>迎撃カードを使うか、このまま受けるか選んでください（1回の攻撃に1枚まで）</p>
             <div className="counter-cards">
               {counterCards.length === 0 && <span className="muted">使える迎撃カードがありません</span>}
               {counterCards.map((c) => (
@@ -1034,9 +1322,10 @@ function Game(props: {
                 </div>
               ))}
             </div>
-            <button className="primary big" onClick={() => send({ type: 'pass_counter' })}>
-              迎撃しない（このまま受ける）
-            </button>
+            <div className="counter-actions">
+              <button onClick={() => setCounterPeek(true)}>盤面を見る</button>
+              <button onClick={() => send({ type: 'pass_counter' })}>何もしない（このまま受ける）</button>
+            </div>
           </div>
         </div>
       )}
@@ -1248,7 +1537,23 @@ function CardArt({ cardId, className }: { cardId: string; className: string }) {
   );
 }
 
+/** カードは、元の完成カード画像（枠・絵・能力文・ATK込み）をそのまま表示する */
 function CardFace({ cardId, atk }: { cardId: string; atk?: number }) {
+  const [failed, setFailed] = useState(false);
+  if (cardId === HIDDEN_CARD_ID || failed) return <CssFace cardId={cardId} atk={atk} />;
+  const m = CARDS[cardId];
+  const shown = atk ?? m.baseAtk;
+  const changed = m.baseAtk !== undefined && shown !== m.baseAtk;
+  return (
+    <div className="face face-img">
+      <img src={`/cards-full/${cardId}.jpg`} alt={m.name} draggable={false} onError={() => setFailed(true)} />
+      {changed && <span className="face-atk-now">ATK {shown}</span>}
+    </div>
+  );
+}
+
+/** 完成カード画像が無いときの予備表示 */
+function CssFace({ cardId, atk }: { cardId: string; atk?: number }) {
   if (cardId === HIDDEN_CARD_ID) {
     // 裏面は全カード共通（スリーブの選択に従う）
     return (
@@ -1263,11 +1568,14 @@ function CardFace({ cardId, atk }: { cardId: string; atk?: number }) {
       <div className="face-head">
         <span className="cost">{m.cost}</span>
         <span className="face-name">{m.name}</span>
+        <span className="face-fac">{m.faction === 'sea' ? '海' : '川'}</span>
       </div>
-      <CardArt cardId={cardId} className="face-art" />
+      <div className="face-art-wrap">
+        <CardArt cardId={cardId} className="face-art" />
+        {m.baseAtk !== undefined && <span className="face-atk">ATK {atk ?? m.baseAtk}</span>}
+      </div>
       <div className="face-foot">
-        <span className="face-type">{m.type === 'creature' ? (m.size ? sizeLabel(m.size) : '') : m.type === 'environment' ? '環境' : '迎撃'}</span>
-        {m.baseAtk !== undefined && <span className="face-atk">{atk ?? m.baseAtk}</span>}
+        {m.type === 'creature' ? (m.size ? sizeLabel(m.size) : '') : m.type === 'environment' ? '環境' : '迎撃'}
       </div>
     </div>
   );
@@ -1302,6 +1610,7 @@ function Tile(props: {
     <div
       className={`tile ${m.faction} ${card.ready || card.enteredTurn === state.turn ? '' : 'tapped'} ${selected ? 'selected' : ''} ${targetable ? 'target' : ''} ${own ? 'own' : 'foe'} ${fx?.fresh === 'play' ? 'play-in' : ''} ${fx?.attacking ? (own ? 'atk-own' : 'atk-foe') : ''} ${fx?.hit ? 'hit' : ''}`}
       onClick={onClick}
+      data-fid={card.id}
       title={m.name}
     >
       {/* 手札と同じ表示（絵・名前・コスト・現在のATK）。装備・弱体は右上の印で示す */}
@@ -1319,20 +1628,32 @@ function Tile(props: {
 function CardDetail({ cardId }: { cardId: string }) {
   const m = CARDS[cardId];
   return (
-    <div className={`detail-card ${m.faction}`}>
-      <CardArt cardId={cardId} className="detail-art" />
-      <div className="detail-title">{m.name}</div>
-      <div className="muted">{m.reading}</div>
-      <div className="muted">
-        {m.type === 'creature' ? m.taxonomy ?? '' : m.type === 'environment' ? '環境カード' : '迎撃カード'}
-      </div>
-      <div>コスト {m.cost}{m.baseAtk !== undefined ? ` ／ ATK ${m.baseAtk}` : ''}</div>
-      {m.abilities.map((a) => (
-        <div key={a.name} className="ability">
-          <b>《{a.name}》</b> {a.text}
+    <div className={`detail-card card-full ${m.faction}`}>
+      <div className="dc-head">
+        <span className="cost">{m.cost}</span>
+        <div className="dc-title">
+          <div className="dc-name">{m.name}</div>
+          <div className="dc-sub">
+            {m.reading} ・ {m.type === 'creature' ? m.taxonomy ?? '' : m.type === 'environment' ? '環境カード' : '迎撃カード'}
+          </div>
         </div>
-      ))}
-      <div className="flavor">{m.flavor}</div>
+        <span className="face-fac">{m.faction === 'sea' ? '海' : '川'}</span>
+      </div>
+      <div className="dc-art-wrap">
+        <CardArt cardId={cardId} className="detail-art" />
+        {m.baseAtk !== undefined && <span className="face-atk">ATK {m.baseAtk}</span>}
+      </div>
+      {m.abilities.length > 0 && (
+        <div className="dc-abil">
+          <span className="dc-abil-tag">能力</span>
+          {m.abilities.map((a) => (
+            <div key={a.name} className="dc-abil-line">
+              <b>《{a.name}》</b> {a.text}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="dc-flavor">{m.flavor}</div>
     </div>
   );
 }

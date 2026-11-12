@@ -21,7 +21,11 @@ describe('能力：かばう', () => {
     put(s, a, 'SEA-001', 'big');
     put(s, b, 'SEA-005', 'guard'); // ハリセンボン：かばう
     s.players[b].hand = s.players[b].hand.filter((h) => h.cardId.indexOf('C') === -1); // 迎撃なし
-    const r = applyAction(s, a, { type: 'attack', attackerIds: ['big'], target: { kind: 'habitat' } });
+    const r0 = applyAction(s, a, { type: 'attack', attackerIds: ['big'], target: { kind: 'habitat' } });
+    expect(r0.ok).toBe(true);
+    if (!r0.ok) return;
+    // 防御側がかばうを選ぶ
+    const r = applyAction(r0.state, b, { type: 'use_guard' });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     // かばわれたので、生息地のテリトリーは減らない

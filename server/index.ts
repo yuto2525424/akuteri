@@ -31,7 +31,7 @@ interface Room {
   cpuTimer?: ReturnType<typeof setTimeout>;
 }
 
-/** CPUの1手あたりの待ち時間（人が流れを追えるように） */
+/** CPUの1手あたりの待ち時間（人が動きを見て理解できる速さ） */
 const CPU_DELAY_MS = 1400;
 
 /** CPUの番なら、少し待ってから1手進める（終わるまで繰り返す） */
