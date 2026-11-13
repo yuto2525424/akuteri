@@ -741,20 +741,23 @@ button { touch-action: manipulation; }
 .float-panel .dc-abil { font-size: 12px; }
 /* スマホ（タッチ操作）：画面の右上に、読みやすい大きさで出す */
 @media (pointer: coarse) {
+  /* 盤面を隠しすぎないように、細長く小さくまとめる（スクロールなしで全部見える） */
   .float-panel {
-    top: 54px; right: 8px; width: min(330px, calc(100vw - 16px)); max-height: calc(100dvh - 64px);
-    padding: 8px; font-size: 14px;
+    top: 50px; right: 6px; width: min(236px, 34vw); max-height: calc(100dvh - 58px);
+    padding: 6px; gap: 5px; font-size: 12px; overflow: hidden; border-width: 3px; border-radius: 14px;
   }
-  .float-panel .dc-name { font-size: 17px; }
-  .float-panel .dc-sub { font-size: 11px; }
-  /* スクロールしなくても全部見えるように、絵を低くして解説文を短くする */
-  .float-panel { max-height: calc(100dvh - 62px); overflow: hidden; gap: 6px; padding: 7px; }
-  .float-panel .dc-art-wrap { aspect-ratio: auto; height: min(26dvh, 120px); }
-  .float-panel .detail-card { gap: 6px; }
-  .float-panel .dc-abil { font-size: 11px; padding: 4px 6px; line-height: 1.4; }
-  .float-panel .dc-flavor { display: none; }
+  .float-panel .close-x { top: 4px; right: 4px; width: 24px; min-height: 24px; font-size: 14px; }
+  .float-panel .detail-card { gap: 5px; padding-right: 26px; }
   .float-panel .dc-head { gap: 4px; }
   .float-panel .cost { min-width: 22px; height: 22px; font-size: 12px; }
+  .float-panel .dc-name { font-size: 14px; }
+  .float-panel .dc-sub { font-size: 10px; }
+  .float-panel .face-fac { font-size: 11px; padding: 0 4px; }
+  .float-panel .dc-art-wrap { aspect-ratio: auto; height: 78px; border-width: 2px; }
+  .float-panel .dc-art-wrap .face-atk { font-size: 12px; padding: 0 8px; }
+  .float-panel .dc-abil { font-size: 10.5px; padding: 4px 6px; line-height: 1.4; gap: 2px; }
+  .float-panel .dc-abil-tag { font-size: 10px; }
+  .float-panel .dc-flavor { display: none; }
 }
 .drift-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .float-panel .log { display: flex; flex-direction: column; gap: 3px; }
