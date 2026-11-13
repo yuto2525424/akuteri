@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { clearOrigin, flyIn, rememberOrigin } from './fly';
 import type { MouseEvent as ReactMouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { io, type Socket } from 'socket.io-client';
 import { CARDS, HIDDEN_CARD_ID } from '../shared/cards';
 import { currentAtk, habitatDef, OTHER } from '../shared/engine';
@@ -8,6 +9,9 @@ import { CPU_LEVELS, type CpuLevel } from '../shared/cpu';
 import type { Action, CardInstance, Faction, FieldCard, GameState, Player, PlayerId } from '../shared/types';
 import { getPlayerId, loadCosmetics, MATS, saveCosmetics, SLEEVES, type Cosmetics } from './cosmetics';
 import { useBgm } from './bgm';
+import { loadDecks, type Deck } from './collection';
+import { DeckScreen, TutorialScreen } from './screens';
+import { PackScreen } from './packs';
 import { feel, installRipple, playSfx, useSfx, vibrate } from './juice';
 import type { CSSProperties } from 'react';
 
@@ -227,6 +231,16 @@ function Lobby(props: {
   const [faction, setFaction] = useState<Faction>('sea');
   const [code, setCode] = useState('');
   const [cpuLevel, setCpuLevel] = useState<CpuLevel>('intermediate');
+  const [screen, setScreen] = useState<'home' | 'deck' | 'pack' | 'tutorial'>('home');
+  const [decks, setDecks] = useState<Deck[]>(() => loadDecks());
+  const [deckId, setDeckId] = useState<string>(() => loadDecks().find((d) => d.faction === 'sea')?.id ?? '');
+  // 選んだ派閥のデッキ（30枚そろっているものだけ対戦に使う）
+  const chosenDeck = decks.find((d) => d.id === deckId && d.faction === faction && d.cards.length === 30)?.cards;
+  const decksOfFaction = decks.filter((d) => d.faction === faction);
+  const pickFaction = (f: Faction) => {
+    setFaction(f);
+    setDeckId(decks.find((d) => d.faction === f)?.id ?? '');
+  };
 
   const rememberName = (v: string) => {
     setName(v);
@@ -238,22 +252,26 @@ function Lobby(props: {
   };
 
   const create = () => {
-    socket.emit('create_room', { name, faction }, (r: { ok: boolean }) => {
+    socket.emit('create_room', { name, faction, deck: chosenDeck }, (r: { ok: boolean }) => {
       if (!r.ok) onError('作成できませんでした');
     });
   };
   const join = () => {
-    socket.emit('join_room', { code, name, faction }, (r: { ok: boolean; error?: string }) => {
+    socket.emit('join_room', { code, name, faction, deck: chosenDeck }, (r: { ok: boolean; error?: string }) => {
       if (!r.ok) onError(r.error ?? '参加できませんでした');
     });
   };
   const vsCpu = () => {
     // CPUは、自分と反対のデッキで戦う
     const cpuFaction: Faction = faction === 'sea' ? 'river' : 'sea';
-    socket.emit('create_cpu_room', { name, faction, cpuFaction, level: cpuLevel }, (r: { ok: boolean }) => {
+    socket.emit('create_cpu_room', { name, faction, cpuFaction, level: cpuLevel, deck: chosenDeck }, (r: { ok: boolean }) => {
       if (!r.ok) onError('CPU対戦を始められませんでした');
     });
   };
+
+  if (screen === 'deck') return <DeckScreen onBack={() => { setDecks(loadDecks()); setScreen('home'); }} />;
+  if (screen === 'pack') return <PackScreen onBack={() => setScreen('home')} />;
+  if (screen === 'tutorial') return <TutorialScreen onBack={() => setScreen('home')} />;
 
   if (waitingCode) {
     return (
@@ -280,8 +298,24 @@ function Lobby(props: {
           <input value={name} maxLength={12} onChange={(e) => rememberName(e.target.value)} placeholder="なまえ" />
         </label>
         <div className="factions">
-          <button className={faction === 'sea' ? 'selected sea' : 'sea'} onClick={() => setFaction('sea')}>海デッキ</button>
-          <button className={faction === 'river' ? 'selected river' : 'river'} onClick={() => setFaction('river')}>川デッキ</button>
+          <button className={faction === 'sea' ? 'selected sea' : 'sea'} onClick={() => pickFaction('sea')}>海デッキ</button>
+          <button className={faction === 'river' ? 'selected river' : 'river'} onClick={() => pickFaction('river')}>川デッキ</button>
+        </div>
+        <label>
+          使うデッキ
+          <select value={deckId} onChange={(e) => setDeckId(e.target.value)}>
+            {decksOfFaction.length === 0 && <option value="">（この派閥のデッキがありません）</option>}
+            {decksOfFaction.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}（{d.cards.length}/30{d.cards.length === 30 ? '' : '・未完成は基本デッキで対戦'}）
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="menu-row">
+          <button onClick={() => setScreen('deck')}>デッキ編成</button>
+          <button onClick={() => setScreen('pack')}>パックを開ける</button>
+          <button onClick={() => setScreen('tutorial')}>チュートリアル</button>
         </div>
         <div className="cpu-levels">
           <span className="muted">CPUの強さ</span>
@@ -1127,7 +1161,8 @@ function Game(props: {
       )}
 
       {/* カード詳細・ログ・漂流域・設定（必要なときだけ表示） */}
-      {(detailMeta || panel !== 'none') && (
+      {/* 画面の縮小（.game の zoom）の外に出して、スマホでも本来の大きさで表示する */}
+      {(detailMeta || panel !== 'none') && createPortal(
         <aside className="float-panel">
           <button className="close-x" onClick={() => { setPanel('none'); setSel(null); setInspectCardId(null); }} aria-label="閉じる">×</button>
           {panel === 'log' && (
@@ -1160,7 +1195,8 @@ function Game(props: {
             </div>
           )}
           {panel === 'none' && detailMeta && <CardDetail cardId={detailCardId!} />}
-        </aside>
+        </aside>,
+        document.body,
       )}
 
       {/* 攻撃・撃破・テリトリー破壊の告知：「〇〇が〇〇に攻撃！」 */}

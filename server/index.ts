@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import { applyAction, createGame, viewFor, OTHER } from '../src/shared/engine';
+import { validateDeck } from '../src/shared/cards';
 import { cpuNeedsDecision, cpuStep, type CpuLevel } from '../src/shared/cpu';
 import { recordGame, recordPageView, summary } from './stats';
 import type { Action, Faction, GameState, PlayerId } from '../src/shared/types';
@@ -18,6 +19,8 @@ interface Seat {
   name: string;
   faction: Faction;
   socketId: string | null;
+  /** 自分で組んだデッキ（正しいものだけ受け付ける） */
+  deck?: string[];
 }
 
 interface Room {
@@ -108,7 +111,11 @@ function startGame(room: Room) {
   const ids = room.seats.map((s) => (s.socketId ? io.sockets.sockets.get(s.socketId)?.data.playerId : undefined));
   recordGame(ids, room.cpu ? 'cpu' : 'human');
   const [a, b] = room.seats;
-  room.state = createGame(Math.floor(Math.random() * 1e9), { name: a.name, faction: a.faction }, { name: b.name, faction: b.faction });
+  room.state = createGame(
+    Math.floor(Math.random() * 1e9),
+    { name: a.name, faction: a.faction, deck: a.deck },
+    { name: b.name, faction: b.faction, deck: b.deck },
+  );
   room.rematchVotes.clear();
 }
 
@@ -120,9 +127,9 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('create_room', (payload: { name: string; faction: Faction }, ack?: (r: unknown) => void) => {
+  socket.on('create_room', (payload: { name: string; faction: Faction; deck?: unknown }, ack?: (r: unknown) => void) => {
     const code = makeCode();
-    const seat: Seat = { id: 'A', token: randomBytes(16).toString('hex'), name: clean(payload.name, 'プレイヤーA'), faction: payload.faction, socketId: socket.id };
+    const seat: Seat = { id: 'A', token: randomBytes(16).toString('hex'), name: clean(payload.name, 'プレイヤーA'), faction: payload.faction, socketId: socket.id, deck: validateDeck(payload.faction, payload.deck) ?? undefined };
     const room: Room = { code, seats: [seat], state: null, rematchVotes: new Set(), cpu: false, cpuLevel: 'intermediate' };
     rooms.set(code, room);
     socket.data.room = code;
@@ -131,9 +138,9 @@ io.on('connection', (socket) => {
     broadcast(room);
   });
 
-  socket.on('create_cpu_room', (payload: { name: string; faction: Faction; cpuFaction: Faction; level?: CpuLevel }, ack?: (r: unknown) => void) => {
+  socket.on('create_cpu_room', (payload: { name: string; faction: Faction; cpuFaction: Faction; level?: CpuLevel; deck?: unknown }, ack?: (r: unknown) => void) => {
     const code = makeCode();
-    const seat: Seat = { id: 'A', token: randomBytes(16).toString('hex'), name: clean(payload.name, 'プレイヤー'), faction: payload.faction, socketId: socket.id };
+    const seat: Seat = { id: 'A', token: randomBytes(16).toString('hex'), name: clean(payload.name, 'プレイヤー'), faction: payload.faction, socketId: socket.id, deck: validateDeck(payload.faction, payload.deck) ?? undefined };
     const level: CpuLevel = payload.level === 'beginner' || payload.level === 'advanced' ? payload.level : 'intermediate';
     const cpuName = { beginner: 'CPU（初級）', intermediate: 'CPU（中級）', advanced: 'CPU（上級）' }[level];
     const cpuSeat: Seat = { id: 'B', token: 'cpu', name: cpuName, faction: payload.cpuFaction, socketId: null };
@@ -147,11 +154,11 @@ io.on('connection', (socket) => {
     scheduleCpu(room);
   });
 
-  socket.on('join_room', (payload: { code: string; name: string; faction: Faction }, ack?: (r: unknown) => void) => {
+  socket.on('join_room', (payload: { code: string; name: string; faction: Faction; deck?: unknown }, ack?: (r: unknown) => void) => {
     const room = rooms.get(String(payload.code ?? '').toUpperCase());
     if (!room) return ack?.({ ok: false, error: '部屋が見つかりません' });
     if (room.seats.length >= 2) return ack?.({ ok: false, error: '満員です' });
-    const seat: Seat = { id: 'B', token: randomBytes(16).toString('hex'), name: clean(payload.name, 'プレイヤーB'), faction: payload.faction, socketId: socket.id };
+    const seat: Seat = { id: 'B', token: randomBytes(16).toString('hex'), name: clean(payload.name, 'プレイヤーB'), faction: payload.faction, socketId: socket.id, deck: validateDeck(payload.faction, payload.deck) ?? undefined };
     room.seats.push(seat);
     socket.data.room = room.code;
     socket.data.token = seat.token;

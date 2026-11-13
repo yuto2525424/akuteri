@@ -224,6 +224,18 @@ export const DECK_LISTS: Record<Faction, Record<string, number>> = {
   },
 };
 
+/** 送られてきたデッキが正しいか調べる（30枚・同じカードは3枚まで・その派閥のカードだけ） */
+export function validateDeck(faction: Faction, ids: unknown): string[] | null {
+  if (!Array.isArray(ids) || ids.length !== 30) return null;
+  const count: Record<string, number> = {};
+  for (const id of ids) {
+    if (typeof id !== 'string' || !CARDS[id] || CARDS[id].faction !== faction) return null;
+    count[id] = (count[id] ?? 0) + 1;
+    if (count[id] > 3) return null;
+  }
+  return ids as string[];
+}
+
 export function buildDeckIds(faction: Faction): string[] {
   const ids: string[] = [];
   for (const [cardId, count] of Object.entries(DECK_LISTS[faction])) {

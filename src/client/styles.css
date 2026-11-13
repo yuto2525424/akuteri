@@ -733,7 +733,20 @@ button { touch-action: manipulation; }
   padding: 10px; box-shadow: 0 10px 24px rgba(0,0,0,0.35); display: flex; flex-direction: column; gap: 8px; font-size: 13px;
 }
 .float-panel .close-x {
-  position: absolute; right: 8px; top: 6px; min-height: 28px; width: 28px; padding: 0; border-radius: 50%; box-shadow: none;
+  position: absolute; right: 8px; top: 8px; z-index: 2; min-height: 28px; width: 28px; padding: 0; border-radius: 50%; box-shadow: none;
+}
+/* 詳細カードの中身が、パネルの中で重ならないように */
+.float-panel .detail-card { padding-right: 34px; }
+.float-panel .dc-art-wrap { flex: 0 0 auto; }
+.float-panel .dc-abil { font-size: 12px; }
+/* スマホ（タッチ操作）：画面の右上に、読みやすい大きさで出す */
+@media (pointer: coarse) {
+  .float-panel {
+    top: 54px; right: 8px; width: min(330px, calc(100vw - 16px)); max-height: calc(100dvh - 64px);
+    padding: 8px; font-size: 14px;
+  }
+  .float-panel .dc-name { font-size: 17px; }
+  .float-panel .dc-sub { font-size: 11px; }
 }
 .drift-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .float-panel .log { display: flex; flex-direction: column; gap: 3px; }
@@ -1009,6 +1022,67 @@ button { touch-action: manipulation; }
 /* 盤面を見るとき：操作はできないように、盤面と手札を押せなくする */
 .game.peek .board, .game.peek .hand-strip, .game.peek .actions { pointer-events: none; }
 .counter-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+/* ---- デッキ編成・パック・チュートリアル（ロビーから開く画面） ---- */
+.sub-screen { min-height: 100dvh; height: auto; overflow-y: auto; align-items: flex-start; padding: 12px; }
+.sub-screen .panel { width: min(960px, 96vw); }
+.panel.wide { max-width: 960px; }
+.sub-head { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.deck-select { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.deck-select button.selected { background: #ffd166; }
+.deck-body { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+.deck-col { flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; max-height: 52vh; overflow-y: auto; padding: 4px; }
+.card-cell { position: relative; padding: 0; border: 0; background: transparent; cursor: pointer; border-radius: 8px; }
+.card-cell:disabled { opacity: 0.35; cursor: default; }
+.card-pic { width: 100%; height: auto; display: block; border-radius: 8px; pointer-events: none; }
+.cell-count {
+  position: absolute; right: 2px; bottom: 2px; background: #fff; color: var(--ink);
+  border: 2px solid var(--ink); border-radius: 999px; padding: 0 6px; font-size: 12px; font-weight: 900;
+}
+.deck-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.deck-actions input { flex: 1 1 160px; }
+.ok-msg { color: #1a9e86; font-weight: 900; margin: 4px 0; }
+.menu-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 6px 0; }
+.pack-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 14px 0; }
+.pack-slot { width: min(120px, 22vw); padding: 0; border: 0; background: transparent; cursor: pointer; perspective: 800px; }
+.pack-slot img { width: 100%; height: auto; display: block; border-radius: 8px; transition: transform 0.5s; }
+.pack-pic { animation: packFlip 0.6s ease both; }
+/* パック本体（むくと上がめくれて、中から5枚出る） */
+.pack-stage { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 10px 0; }
+.pack-wrap {
+  position: relative; width: min(260px, 70vw); aspect-ratio: 5 / 8; border-radius: 16px; overflow: hidden;
+  background: linear-gradient(160deg, #3aa6ec 0%, #1d6db5 55%, #0b2a4a 100%); border: 4px solid #e9f7ff;
+  box-shadow: 0 8px 0 #0b2a4a; cursor: grab; touch-action: none; user-select: none;
+}
+.pack-wrap.torn .pack-body { animation: packShrink 0.7s ease forwards; }
+.pack-top {
+  position: absolute; left: 0; right: 0; top: 0; height: 18%; z-index: 2;
+  background: linear-gradient(90deg, #ffd166, #ffb93c); color: var(--ink); font-weight: 900;
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+  clip-path: polygon(0 0, 100% 0, 100% 70%, 96% 100%, 92% 70%, 88% 100%, 84% 70%, 80% 100%, 76% 70%, 72% 100%, 68% 70%, 64% 100%, 60% 70%, 56% 100%, 52% 70%, 48% 100%, 44% 70%, 40% 100%, 36% 70%, 32% 100%, 28% 70%, 24% 100%, 20% 70%, 16% 100%, 12% 70%, 8% 100%, 4% 70%, 0 100%);
+  transition: transform 0.12s linear;
+}
+.pack-body {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #fff;
+}
+.pack-title { font-size: 22px; font-weight: 900; text-shadow: 0 2px 0 #0b2a4a; letter-spacing: 0.04em; }
+.pack-sub { font-size: 13px; opacity: 0.9; }
+.pack-tear-line {
+  position: absolute; left: 0; right: 0; top: 18%; height: 0;
+  border-top: 2px dashed rgba(255, 255, 255, 0.85); pointer-events: none;
+}
+@keyframes packShrink { to { transform: scale(0.9); opacity: 0; } }
+.shop-box {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px;
+  border: 3px dashed rgba(191, 230, 255, 0.7); border-radius: 14px; text-align: center; max-width: 320px;
+}
+@keyframes packFlip { from { transform: rotateY(180deg); } to { transform: rotateY(0deg); } }
+.tut-title { margin: 6px 0; font-size: 22px; }
+.tut-body { font-size: 16px; line-height: 1.7; margin: 0 0 12px; }
+.tut-cards { display: flex; gap: 12px; justify-content: center; margin: 8px 0 12px; }
+.tut-pic { width: min(200px, 40vw); }
+.tut-nav { display: flex; gap: 10px; justify-content: space-between; }
 button.big { min-height: 52px; font-size: 17px; padding: 8px 26px; }
 
 /* 押した場所から広がる光の輪（すべての操作に出る） */

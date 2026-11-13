@@ -138,10 +138,13 @@ function expire(state: GameState, ev: Until) {
 export interface PlayerSetup {
   name: string;
   faction: Faction;
+  /** 自分で組んだデッキ（30枚）。無ければ基本のデッキ */
+  deck?: string[];
 }
 
 function makePlayer(id: PlayerId, setup: PlayerSetup, rng: () => number): Player {
-  const deck: CardInstance[] = shuffle(buildDeckIds(setup.faction), rng).map((cardId, i) => ({
+  const list = setup.deck && setup.deck.length === 30 ? setup.deck : buildDeckIds(setup.faction);
+  const deck: CardInstance[] = shuffle(list, rng).map((cardId, i) => ({
     id: `${id}-${i}`,
     cardId,
     owner: id,
