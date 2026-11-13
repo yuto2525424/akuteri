@@ -882,14 +882,9 @@ button { touch-action: manipulation; }
   pointer-events: none; z-index: 70;
 }
 .atk-arrow path {
-  fill: none; stroke: #ffd166; stroke-width: 7; stroke-linecap: round;
-  stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 8px rgba(255, 209, 102, 0.95));
-  animation: arrowDraw 0.7s ease-out forwards, arrowPulse 0.5s 0.7s ease-in-out 3;
-}
-/* 矢印が届いたあと、2回ほど明るく脈打つ（線の色は変えず、見やすさを保つ） */
-@keyframes arrowPulse {
-  0%, 100% { filter: drop-shadow(0 0 8px rgba(255, 209, 102, 0.95)); }
-  50% { filter: drop-shadow(0 0 16px #fff3b0) drop-shadow(0 0 4px #fff); }
+  fill: none; stroke: #ffd166; stroke-width: 6; stroke-linecap: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.9));
+  animation: arrowDraw 0.7s ease-out forwards;
 }
 .atk-arrow marker path { fill: #ffd166; stroke: none; }
 @keyframes arrowDraw { to { stroke-dashoffset: 0; } }
@@ -920,21 +915,6 @@ button { touch-action: manipulation; }
 .ability-banner .ab-burst { opacity: 0.22; width: 220px; height: 220px; margin: -110px 0 0 -110px; }
 .ability-banner .ab-particle { opacity: 0.6; }
 .ability-banner .ab-main { font-size: clamp(15px, 2.4vw, 20px); padding: 2px 12px; border-width: 3px; border-radius: 10px; }
-/* 能力名の上を、白い光が一度すっと横切る（文字は白のまま、読みやすさは変えない） */
-.ability-banner .ab-main { position: relative; overflow: hidden; }
-.ability-banner .ab-main::after {
-  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 45%; pointer-events: none;
-  background: linear-gradient(100deg, transparent 0%, rgba(255, 255, 255, 0.75) 50%, transparent 100%);
-  transform: translateX(-120%); animation: abShine 0.9s 0.3s ease-out both;
-}
-@keyframes abShine { to { transform: translateX(260%); } }
-/* 能力を発動したカードの金色の枠が、2回ふくらんで光る */
-.ab-card { animation: abCardIn 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) both, abCardRing 0.8s 0.55s ease-out 2; }
-@keyframes abCardRing {
-  0% { box-shadow: 0 0 0 4px #ffd166, 0 0 36px rgba(255, 209, 102, 0.9); }
-  50% { box-shadow: 0 0 0 8px #fff3b0, 0 0 60px rgba(255, 230, 120, 1); }
-  100% { box-shadow: 0 0 0 4px #ffd166, 0 0 36px rgba(255, 209, 102, 0.9); }
-}
 .ability-banner .ab-name { font-size: clamp(12px, 1.8vw, 15px); padding: 1px 10px; border-width: 2px; }
 .ability-banner .ab-sub {
   font-size: 11px; background: rgba(0, 0, 0, 0.35); border-radius: 999px; padding: 2px 10px; text-shadow: none;
