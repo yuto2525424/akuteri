@@ -1244,3 +1244,11 @@ button.big { min-height: 52px; font-size: 17px; padding: 8px 26px; }
   background: var(--green); color: #fff; min-width: 180px; min-height: 48px; font-size: 18px;
   border-color: #fff; box-shadow: 0 5px 0 #1d6b3d, 0 0 22px rgba(255,255,255,0.7); animation: pulse 1.2s ease-in-out infinite;
 }
+
+/* スマホ（タッチ操作）：ゲームの外の余白や飾りを消して、盤面だけを画面いっぱいに見せる */
+@media (pointer: coarse) {
+  html, body { background: #0b2a4a; }
+  body { background-attachment: scroll; }
+  .game { min-height: 100dvh; margin: 0; }
+  .game .topbar { border-radius: 0; }
+}
