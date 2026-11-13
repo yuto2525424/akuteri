@@ -1,5 +1,6 @@
 // カードのコレクション（持っている枚数）とデッキを、この端末に保存する。
-// 最初は、全カードを各3枚持っている状態から始まる。パックを開けると、カードが増える。
+// 最初は、基本デッキに入っているカードだけを、デッキと同じ枚数持っている状態から始まる。
+// パックを開けると、カードが増える。
 import { CARDS, DECK_LISTS, HIDDEN_CARD_ID } from '../shared/cards';
 import type { Faction } from '../shared/types';
 
@@ -16,7 +17,8 @@ export const MAX_COPIES = 3;
 export const PACK_SIZE = 5;
 export const ALL_CARD_IDS = Object.keys(CARDS).filter((id) => id !== HIDDEN_CARD_ID);
 
-const COL_KEY = 'aqua-collection-v1';
+// v2：最初の持ち物を「基本デッキのカードだけ」に変えたので、キーも新しくしている
+const COL_KEY = 'aqua-collection-v2';
 const DECK_KEY = 'aqua-decks-v1';
 
 function read<T>(key: string): T | null {
@@ -38,8 +40,11 @@ function write(key: string, value: unknown) {
 export function loadCollection(): Collection {
   const saved = read<Collection>(COL_KEY);
   if (saved) return saved;
+  // 基本デッキに入っている枚数だけ持つ（デッキに入っていないカードは持たない）
   const c: Collection = {};
-  for (const id of ALL_CARD_IDS) c[id] = MAX_COPIES;
+  for (const f of ['sea', 'river'] as Faction[]) {
+    for (const [id, n] of Object.entries(DECK_LISTS[f])) c[id] = (c[id] ?? 0) + n;
+  }
   write(COL_KEY, c);
   return c;
 }
