@@ -708,9 +708,8 @@ function useGuard(state: GameState, pid: PlayerId) {
   c.redirected = true;
   c.guardOffer = null;
   log(state, `${meta(guard.cardId).name}が【かばう】で攻撃対象になりました`);
-  // 迎撃できるカードが残っていなければ、そのまま戦闘へ
-  const playable = d.hand.some((h) => meta(h.cardId).type === 'counter' && canUseCounter(state, h.cardId));
-  if (!playable) resolveCombat(state);
+  // かばったあとは、迎撃カードは重ねて使えない（そのまま戦闘へ）
+  resolveCombat(state);
 }
 
 function resolveCombat(state: GameState) {

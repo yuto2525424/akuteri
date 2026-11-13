@@ -279,6 +279,28 @@ describe('戦闘', () => {
     expect(r.state.players[def].territories).toHaveLength(4);
   });
 
+  it('かばった後は、迎撃カードを重ねて使えない', () => {
+    let s = setup();
+    const atk = s.active;
+    const def = OTHER[atk];
+    s = putField(s, atk, 'SEA-001', true, 'big');
+    s = putField(s, def, 'SEA-005', true, 'guard'); // 威嚇（かばう）
+    s = putField(s, def, 'SEA-009', false, 'fish');
+    // 防御側は迎撃カード（逃避行動）を持っている
+    s.players[def].hand.push({ id: 'counter-x', cardId: 'SEA-C02', owner: def });
+    const r0 = applyAction(s, atk, { type: 'attack', attackerIds: ['big'], target: { kind: 'habitat' } });
+    expect(r0.ok).toBe(true);
+    if (!r0.ok) return;
+    const r = applyAction(r0.state, def, { type: 'use_guard' });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    // かばった後はそのまま戦闘へ進み、迎撃の画面は出ない
+    expect(r.state.phase).toBe('main');
+    expect(r.state.players[def].hand.some((h) => h.cardId === 'SEA-C02')).toBe(true);
+    const again = applyAction(r.state, def, { type: 'counter', instanceId: 'counter-x' });
+    expect(again.ok).toBe(false);
+  });
+
   it('逃避行動で攻撃が無効になる', () => {
     let s = setup();
     const atk = s.active;
