@@ -1125,6 +1125,18 @@ button.big { min-height: 52px; font-size: 17px; padding: 8px 26px; }
 }
 .game.shake { animation: screenShake 0.9s ease-in-out; }
 
+/* 撃破の閃光：画面の中央から、赤と白の光が一瞬広がる */
+.impact-flash {
+  position: fixed; inset: 0; pointer-events: none; z-index: 55;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 90, 60, 0.55) 35%, rgba(255, 60, 40, 0) 70%);
+  animation: impactFlash 0.6s ease-out forwards;
+}
+@keyframes impactFlash {
+  0% { opacity: 0; transform: scale(0.6); }
+  18% { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+
 /* ターン交代：画面の帯が左から右へ横切る */
 @keyframes sweepBand {
   0% { transform: translateX(-100%); opacity: 0; }

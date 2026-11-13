@@ -3,7 +3,7 @@
 // 最初のクリックでAudioを用意する。
 import { useEffect, useState } from 'react';
 
-export type Sfx = 'draw' | 'play' | 'attack' | 'hit' | 'turn' | 'counter' | 'win' | 'lose' | 'ability' | 'tap' | 'confirm' | 'shatter';
+export type Sfx = 'draw' | 'play' | 'attack' | 'hit' | 'crit' | 'turn' | 'counter' | 'win' | 'lose' | 'ability' | 'tap' | 'confirm' | 'shatter';
 
 const KEY = 'aqua-territory-sfx';
 let ctx: AudioContext | null = null;
@@ -77,6 +77,12 @@ export function playSfx(kind: Sfx) {
       noise(c, t, 0.18, 0.35);
       tone(c, t, 180, 45, 0.3, 'sine', 0.3);
       break;
+    case 'crit': // 撃破：ドンッ！と低音が落ちて、上へ駆け上がる派手な一撃
+      tone(c, t, 90, 35, 0.4, 'sine', 0.35);
+      noise(c, t, 0.25, 0.4);
+      tone(c, t + 0.04, 300, 1800, 0.3, 'sawtooth', 0.1);
+      [784, 988, 1318].forEach((f, i) => tone(c, t + 0.22 + i * 0.07, f, f, 0.18, 'triangle', 0.18));
+      break;
     case 'turn': // ターン交代のファンファーレ
       [523, 659, 784].forEach((f, i) => tone(c, t + i * 0.09, f, f, 0.16, 'triangle', 0.2));
       break;
@@ -114,6 +120,7 @@ const VIBE: Record<Sfx, number[]> = {
   play: [18],
   attack: [30, 40, 60],
   hit: [60, 40, 90],
+  crit: [90, 50, 140, 50, 220],
   turn: [20, 30, 20],
   counter: [25],
   win: [40, 60, 40, 60, 120],

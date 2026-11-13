@@ -453,6 +453,8 @@ function Game(props: {
   // ---- 手応え：操作の結果に合わせて音・振動・画面の揺れ ----
   const prevState = useRef<GameState | null>(null);
   const [shaking, setShaking] = useState(false);
+  // 撃破の瞬間に走る、赤と白の閃光（キーを変えると、そのたびに出直す）
+  const [impact, setImpact] = useState<number | null>(null);
   const [abilityBanner, setAbilityBanner] = useState<{ title?: string; label: string; sub: string; cardId?: string; key: number } | null>(null);
   const [arrow, setArrow] = useState<{
     from: { x: number; y: number };
@@ -615,7 +617,8 @@ function Game(props: {
         setArrow({ from: at(fromEl), to: at(toEl), w: g.width / z, h: g.height / z, key: Date.now() });
       }
     } else if (p.combat && !state.combat && count(state) < count(p)) {
-      feel('hit');
+      feel('crit');
+      setImpact(Date.now());
       shake();
     } else if (driftCount(state) > driftCount(p) && p.phase === 'counter') {
       feel('counter');
@@ -1198,6 +1201,8 @@ function Game(props: {
         </aside>,
         document.body,
       )}
+
+      {impact !== null && <div className="impact-flash" key={impact} aria-hidden="true" />}
 
       {/* 攻撃・撃破・テリトリー破壊の告知：「〇〇が〇〇に攻撃！」 */}
       {callout && (
